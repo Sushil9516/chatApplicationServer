@@ -30,6 +30,8 @@ dotenv.config({
   path: "./.env",
 });
 
+// console.log("Allowed CORS Origins:", process.env.CLIENT_URL);
+
 const mongoURI = process.env.MONGO_URI;
 const port = process.env.PORT || 3000;
 const envMode = process.env.NODE_ENV.trim() || "PRODUCTION";
