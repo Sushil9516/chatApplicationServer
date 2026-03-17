@@ -65,7 +65,7 @@ const allUsers = TryCatch(async (req, res) => {
         groups,
         friends,
       };
-    })
+    }),
   );
 
   return res.status(200).json({
@@ -100,7 +100,7 @@ const allChats = TryCatch(async (req, res) => {
         totalMembers: members.length,
         totalMessages,
       };
-    })
+    }),
   );
 
   return res.status(200).json({
@@ -120,14 +120,14 @@ const allMessages = TryCatch(async (req, res) => {
       attachments,
       content,
       createdAt,
-      chat: chat._id,
-      groupChat: chat.groupChat,
+      chat: chat?._id || null,
+      groupChat: chat?.groupChat || false,
       sender: {
-        _id: sender._id,
-        name: sender.name,
-        avatar: sender.avatar.url,
+        _id: sender?._id || null,
+        name: sender?.name || "Unknown",
+        avatar: sender?.avatar?.url || "",
       },
-    })
+    }),
   );
 
   return res.status(200).json({
