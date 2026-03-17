@@ -14,8 +14,9 @@ const adminLogin = TryCatch(async (req, res, next) => {
 
   if (!isMatched) return next(new ErrorHandler("Invalid Admin Key", 401));
 
-  const token = jwt.sign(secretKey, process.env.JWT_SECRET);
-
+  const token = jwt.sign({ role: "admin" }, process.env.JWT_SECRET, {
+    expiresIn: "15m",
+  });
   return res
     .status(200)
     .cookie("chattu-admin-token", token, {
