@@ -43,7 +43,7 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 
 const mongoURI = process.env.MONGO_URI;
 const port = process.env.PORT || 3000;
-const envMode = process.env.NODE_ENV.trim() || "PRODUCTION";
+const envMode = (process.env.NODE_ENV || "production").trim() || "production";
 const adminSecretKey = process.env.ADMIN_SECRET_KEY || "adsasdsdfsdfsdfd";
 const userSocketIDs = new Map();
 const onlineUsers = new Set();
@@ -64,10 +64,10 @@ const io = new Server(server, {
 
 app.set("io", io);
 
-// Using Middlewares Here
+// Using Middlewares Here — CORS first so preflight and errors still get headers.
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors(corsOptions));
 
 app.use("/api/v1/auth", authRoute);
 app.use("/api/v1/user", userRoute);
