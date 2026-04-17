@@ -6,6 +6,7 @@ import {
   getMyFriends,
   getMyNotifications,
   getMyProfile,
+  getWebRtcIceConfig,
   login,
   logout,
   newUser,
@@ -53,6 +54,8 @@ app.post(
 app.use(isAuthenticated);
 
 app.get("/me", getMyProfile);
+
+app.get("/webrtc-ice", getWebRtcIceConfig);
 
 app.put(
   "/profile",

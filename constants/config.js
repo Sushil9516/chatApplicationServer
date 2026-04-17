@@ -1,3 +1,11 @@
+/**
+ * Server environment: configure **only** `chatApplicationServer/.env` (same folder as `app.js`).
+ * Common keys: CLIENT_URL, MONGO_URI, JWT_SECRET, PORT, CLOUDINARY_* , GOOGLE_CLIENT_ID,
+ * SMTP_* / MAIL_FROM, GEMINI_API_KEY, ADMIN_SECRET_KEY, WEBRTC_ICE_SERVERS (JSON array for TURN).
+ *
+ * Production web app URL (CORS + password-reset when not on localhost):
+ *   CLIENT_URL=https://chatr-theta.vercel.app
+ */
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -7,11 +15,8 @@ dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 const LOCAL_ORIGINS = ["http://localhost:5173", "http://localhost:4173"];
 
-/** Default production clients (extend with CLIENT_URL on the host, comma-separated). */
-const DEFAULT_CLIENT_ORIGINS = [
-  "https://chatr-theta.vercel.app",
-  "https://chat-application-client-theta.vercel.app",
-];
+/** Production SPA (comma-separated CLIENT_URL in .env merges with this). */
+const DEFAULT_CLIENT_ORIGINS = ["https://chatr-theta.vercel.app"];
 
 export function parseClientUrls(value) {
   if (!value || typeof value !== "string") return [];
@@ -33,7 +38,7 @@ const corsOptions = {
   credentials: true,
 };
 
-/** First CLIENT_URL entry for emails; otherwise the primary default deployment. */
+/** First CLIENT_URL from .env for emails; otherwise the default deployment above. */
 export function getPrimaryClientUrl() {
   const fromEnv = parseClientUrls(process.env.CLIENT_URL);
   if (fromEnv.length > 0) return fromEnv[0];

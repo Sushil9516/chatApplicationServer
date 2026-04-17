@@ -445,6 +445,56 @@ const getMyFriends = TryCatch(async (req, res) => {
   }
 });
 
+const WEBRTC_ICE_KEYS = new Set([
+  "urls",
+  "username",
+  "credential",
+  "credentialType",
+]);
+
+function defaultStunIceServers() {
+  return [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+  ];
+}
+
+/** Parse WEBRTC_ICE_SERVERS JSON from env (include TURN in production for NAT traversal). */
+function parseWebRtcIceServersFromEnv() {
+  const raw = (process.env.WEBRTC_ICE_SERVERS || "").trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    const out = [];
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== "object") continue;
+      const clean = {};
+      for (const k of Object.keys(entry)) {
+        if (!WEBRTC_ICE_KEYS.has(k)) continue;
+        const v = entry[k];
+        if (k === "urls") {
+          if (typeof v === "string") clean.urls = v;
+          else if (Array.isArray(v) && v.every((x) => typeof x === "string"))
+            clean.urls = v;
+        } else if (typeof v === "string") clean[k] = v;
+      }
+      if (clean.urls) out.push(clean);
+    }
+    return out.length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Authenticated clients fetch ICE servers (STUN + optional TURN from env). */
+const getWebRtcIceConfig = TryCatch(async (req, res) => {
+  const custom = parseWebRtcIceServersFromEnv();
+  const iceServers = custom?.length ? custom : defaultStunIceServers();
+  return res.status(200).json({ success: true, iceServers });
+});
+
 export {
   acceptFriendRequest,
   changePassword,
@@ -452,6 +502,7 @@ export {
   getMyFriends,
   getMyNotifications,
   getMyProfile,
+  getWebRtcIceConfig,
   login,
   logout,
   newUser,
