@@ -13,13 +13,13 @@ import {
   sendToken,
   uploadFilesToCloudinary,
 } from "../utils/features.js";
-import { CHATTU_TOKEN } from "../constants/config.js";
+import { CHATTU_TOKEN, getPrimaryClientUrl } from "../constants/config.js";
 import { ErrorHandler } from "../utils/utility.js";
 import { sendPasswordResetEmail } from "../utils/email.js";
 
 /** Reset links must open where the user is browsing (localhost in dev, prod URL when deployed). */
 function resolveResetBaseUrl(req) {
-  const envBase = (process.env.CLIENT_URL || "").trim().replace(/\/$/, "");
+  const envBase = getPrimaryClientUrl();
   const origin = (req.get("origin") || "").trim().replace(/\/$/, "");
   const isLocal =
     /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
