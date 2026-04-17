@@ -1,10 +1,16 @@
 import express from "express";
 import {
   addMembers,
+  clearChatMessages,
   deleteChat,
+  forwardMessage,
   getChatDetails,
   getMessages,
+  getCallHistory,
+  editMessage,
+  deleteMessage,
   getMyChats,
+  getOrCreateSelfChat,
   getMyGroups,
   leaveGroup,
   newGroupChat,
@@ -15,10 +21,14 @@ import {
 import {
   addMemberValidator,
   chatIdValidator,
+  forwardMessageValidator,
   newGroupValidator,
   removeMemberValidator,
   renameValidator,
   sendAttachmentsValidator,
+  messageIdParamValidator,
+  editMessageValidator,
+  deleteMessageQueryValidator,
   validateHandler,
 } from "../lib/validators.js";
 import { isAuthenticated } from "../middlewares/auth.js";
@@ -33,6 +43,8 @@ app.use(isAuthenticated);
 app.post("/new", newGroupValidator(), validateHandler, newGroupChat);
 
 app.get("/my", getMyChats);
+
+app.get("/self", getOrCreateSelfChat);
 
 app.get("/my/groups", getMyGroups);
 
@@ -56,8 +68,35 @@ app.post(
   sendAttachments
 );
 
+app.patch(
+  "/messages/:messageId",
+  messageIdParamValidator(),
+  editMessageValidator(),
+  validateHandler,
+  editMessage
+);
+
+app.delete(
+  "/messages/:messageId",
+  messageIdParamValidator(),
+  deleteMessageQueryValidator(),
+  validateHandler,
+  deleteMessage
+);
+
 // Get Messages
 app.get("/message/:id", chatIdValidator(), validateHandler, getMessages);
+
+app.post(
+  "/forward",
+  forwardMessageValidator(),
+  validateHandler,
+  forwardMessage
+);
+
+app.post("/:id/clear", chatIdValidator(), validateHandler, clearChatMessages);
+
+app.get("/:id/calls", chatIdValidator(), validateHandler, getCallHistory);
 
 // Get Chat Details, rename,delete
 app

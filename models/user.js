@@ -9,7 +9,24 @@ const schema = new Schema(
     },
     bio: {
       type: String,
-      required: true,
+      default: "",
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      sparse: true,
+      unique: true,
+    },
+    googleId: {
+      type: String,
+      sparse: true,
+      unique: true,
+    },
+    authProvider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
     },
     username: {
       type: String,
@@ -18,7 +35,6 @@ const schema = new Schema(
     },
     password: {
       type: String,
-      required: true,
       select: false,
     },
     avatar: {
@@ -31,6 +47,15 @@ const schema = new Schema(
         required: true,
       },
     },
+
+    passwordResetToken: { type: String, select: false },
+    passwordResetExpires: { type: Date, select: false },
+
+    /** Chats pinned to the top of the inbox (order preserved). */
+    pinnedChats: {
+      type: [{ type: Schema.Types.ObjectId, ref: "Chat" }],
+      default: [],
+    },
   },
   {
     timestamps: true,
@@ -38,9 +63,10 @@ const schema = new Schema(
 );
 
 schema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+  if (!this.isModified("password") || !this.password) return next();
 
   this.password = await hash(this.password, 10);
+  next();
 });
 
 export const User = mongoose.models.User || model("User", schema);

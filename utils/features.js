@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
+import { CHATTU_TOKEN } from "../constants/config.js";
 import { v4 as uuid } from "uuid";
 import { v2 as cloudinary } from "cloudinary";
 import { getBase64, getSockets } from "../lib/helper.js";
@@ -12,9 +13,14 @@ const cookieOptions = {
 };
 
 const connectDB = (uri) => {
+  // Keep default "Chattu" so existing users/data stay on the same MongoDB database.
+  // UI brand name "Chatr" does not change the DB. Override with MONGO_DB_NAME in .env if needed.
+  const dbName = process.env.MONGO_DB_NAME || "Chattu";
   mongoose
-    .connect(uri, { dbName: "Chattu" })
-    .then((data) => console.log(`Connected to DB: ${data.connection.host}`))
+    .connect(uri, { dbName })
+    .then((data) =>
+      console.log(`Connected to DB: ${data.connection.host} (db: ${dbName})`)
+    )
     .catch((err) => {
       throw err;
     });
@@ -23,11 +29,40 @@ const connectDB = (uri) => {
 const sendToken = (res, user, code, message) => {
   const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET);
 
-  return res.status(code).cookie("chattu-token", token, cookieOptions).json({
+  return res.status(code).cookie(CHATTU_TOKEN, token, cookieOptions).json({
     success: true,
     user,
     message,
   });
+};
+
+const JWT_SEVEN_DAYS = "7d";
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Issue JWT (7-day expiry), set httpOnly cookie, return { token, user } for clients
+ * that also store the token (e.g. Google OAuth flow).
+ */
+const sendAuthTokenResponse = (res, user, statusCode = 200, message = "OK") => {
+  const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
+    expiresIn: JWT_SEVEN_DAYS,
+  });
+
+  const userOut =
+    typeof user.toObject === "function"
+      ? user.toObject({ getters: true, virtuals: false })
+      : { ...user };
+  delete userOut.password;
+
+  return res
+    .status(statusCode)
+    .cookie(CHATTU_TOKEN, token, { ...cookieOptions, maxAge: SEVEN_DAYS_MS })
+    .json({
+      success: true,
+      token,
+      user: userOut,
+      message,
+    });
 };
 
 const emitEvent = (req, event, users, data) => {
@@ -73,6 +108,7 @@ const deletFilesFromCloudinary = async (public_ids) => {
 export {
   connectDB,
   sendToken,
+  sendAuthTokenResponse,
   cookieOptions,
   emitEvent,
   deletFilesFromCloudinary,
