@@ -1,7 +1,9 @@
 /**
  * Server environment: configure **only** `chatApplicationServer/.env` (same folder as `app.js`).
  * Common keys: CLIENT_URL, MONGO_URI, JWT_SECRET, PORT, CLOUDINARY_* , GOOGLE_CLIENT_ID,
- * SMTP_* / MAIL_FROM, GEMINI_API_KEY, ADMIN_SECRET_KEY, WEBRTC_ICE_SERVERS (JSON array for TURN).
+ * SMTP_* / MAIL_FROM, GEMINI_API_KEY, ADMIN_SECRET_KEY,
+ * WEBRTC_ICE_SERVERS (optional JSON RTCIceServer[]), and/or Twilio relay:
+ * TWILIO_ACCOUNT_SID=…  TWILIO_AUTH_TOKEN=…  (see Twilio Network Traversal / STUN-TURN docs).
  *
  * Production web app URL (CORS + password-reset when not on localhost):
  *   CLIENT_URL=https://chatr-theta.vercel.app

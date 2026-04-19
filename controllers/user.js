@@ -488,10 +488,87 @@ function parseWebRtcIceServersFromEnv() {
   }
 }
 
-/** Authenticated clients fetch ICE servers (STUN + optional TURN from env). */
+function dedupeIceServersList(lists) {
+  const flat = lists.flat().filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const s of flat) {
+    if (!s?.urls) continue;
+    const key =
+      (typeof s.urls === "string" ? s.urls : s.urls.join(",")) +
+      "|" +
+      (s.username || "") +
+      "|" +
+      (s.credential || s.password || "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const o = { urls: s.urls };
+    if (s.username) o.username = s.username;
+    if (s.credential) o.credential = s.credential;
+    else if (s.password) o.credential = s.password;
+    out.push(o);
+  }
+  return out;
+}
+
+/**
+ * Twilio Network Traversal — returns STUN+TURN with short-lived credentials.
+ * https://www.twilio.com/docs/stun-turn/api
+ */
+async function fetchTwilioIceServers() {
+  const sid = (process.env.TWILIO_ACCOUNT_SID || "").trim();
+  const authToken = (process.env.TWILIO_AUTH_TOKEN || "").trim();
+  if (!sid || !authToken) return null;
+
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Tokens.json`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${sid}:${authToken}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ Ttl: "43200" }).toString(),
+  });
+
+  if (!res.ok) {
+    const snippet = (await res.text().catch(() => "")).slice(0, 240);
+    console.warn("Twilio Tokens.json failed:", res.status, snippet);
+    return null;
+  }
+
+  const data = await res.json();
+  const raw = data.ice_servers;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+
+  return raw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object" || !entry.urls) return null;
+      const o = { urls: entry.urls };
+      if (entry.username) o.username = entry.username;
+      if (entry.credential) o.credential = entry.credential;
+      else if (entry.password) o.credential = entry.password;
+      return o;
+    })
+    .filter(Boolean);
+}
+
+/** Authenticated clients fetch ICE servers (Twilio and/or WEBRTC_ICE_SERVERS, else STUN only). */
 const getWebRtcIceConfig = TryCatch(async (req, res) => {
-  const custom = parseWebRtcIceServersFromEnv();
-  const iceServers = custom?.length ? custom : defaultStunIceServers();
+  const chunks = [];
+
+  try {
+    const twilio = await fetchTwilioIceServers();
+    if (twilio?.length) chunks.push(twilio);
+  } catch (e) {
+    console.warn("Twilio ICE fetch error:", e?.message || e);
+  }
+
+  const fromEnv = parseWebRtcIceServersFromEnv();
+  if (fromEnv?.length) chunks.push(fromEnv);
+
+  let iceServers = dedupeIceServersList(chunks);
+  if (!iceServers.length) iceServers = defaultStunIceServers();
+
   return res.status(200).json({ success: true, iceServers });
 });
 
