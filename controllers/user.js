@@ -10,7 +10,7 @@ import {
   cookieOptions,
   deletFilesFromCloudinary,
   emitEvent,
-  sendToken,
+  sendAuthTokenResponse,
   uploadFilesToCloudinary,
 } from "../utils/features.js";
 import { CHATTU_TOKEN, getPrimaryClientUrl } from "../constants/config.js";
@@ -60,7 +60,7 @@ const newUser = TryCatch(async (req, res, next) => {
     authProvider: "local",
   });
 
-  sendToken(res, user, 201, "User created");
+  sendAuthTokenResponse(res, user, 201, "User created");
 });
 
 // Login user and save token in cookie
@@ -81,7 +81,7 @@ const login = TryCatch(async (req, res, next) => {
   if (!isMatch)
     return next(new ErrorHandler("Invalid Username or Password", 404));
 
-  sendToken(res, user, 200, `Welcome Back, ${user.name}`);
+  sendAuthTokenResponse(res, user, 200, `Welcome Back, ${user.name}`);
 });
 
 const getMyProfile = TryCatch(async (req, res, next) => {

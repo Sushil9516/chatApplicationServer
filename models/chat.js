@@ -20,6 +20,11 @@ const schema = new Schema(
         ref: "User",
       },
     ],
+    /** When true, only the group owner (creator) may send new messages, attachments, or forwards. */
+    onlyAdminsCanPost: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

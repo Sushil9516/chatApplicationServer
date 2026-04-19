@@ -22,8 +22,9 @@ import {
   ONLINE_USERS,
   START_TYPING,
   STOP_TYPING,
+  SEND_MESSAGE_DENIED,
 } from "./constants/events.js";
-import { buildRecipientAcks, getSockets } from "./lib/helper.js";
+import { buildRecipientAcks, canPostMessagesInChat, getSockets } from "./lib/helper.js";
 import { Message } from "./models/message.js";
 import { Chat } from "./models/chat.js";
 import { corsOptions } from "./constants/config.js";
@@ -93,11 +94,22 @@ io.on("connection", (socket) => {
 
   socket.on(NEW_MESSAGE, async ({ chatId, message, replyTo: replyToRaw }) => {
     try {
-      const chat = await Chat.findById(chatId).select("members");
+      const chat = await Chat.findById(chatId).select(
+        "members groupChat creator onlyAdminsCanPost"
+      );
       if (!chat) return;
 
       if (!chat.members.some((m) => m.toString() === user._id.toString()))
         return;
+
+      if (!canPostMessagesInChat(chat, user._id)) {
+        io.to(socket.id).emit(SEND_MESSAGE_DENIED, {
+          chatId,
+          reason:
+            "Only the group owner can send messages while owner-only send is on.",
+        });
+        return;
+      }
 
       const recipientAcks = buildRecipientAcks(chat.members, user._id);
 
@@ -125,6 +137,7 @@ io.on("connection", (socket) => {
 
       const populated = await Message.findById(doc._id)
         .populate("sender", "name")
+        .populate("recipientAcks.user", "name")
         .populate({
           path: "replyTo",
           select: "content sender deletedForEveryone",
@@ -223,17 +236,18 @@ io.on("connection", (socket) => {
       const chat = await Chat.findById(chatId).select("members");
       if (!chat) return;
 
-      const plain = msg.toObject
-        ? msg.toObject({ flattenMaps: true })
-        : { _id: msg._id, recipientAcks: msg.recipientAcks };
+      const acksDoc = await Message.findById(messageId)
+        .select("recipientAcks")
+        .populate("recipientAcks.user", "name")
+        .lean();
 
       const membersSocket = getSockets(chat.members);
       io.to(membersSocket).emit(MESSAGE_STATUS_UPDATE, {
         chatId,
         updates: [
           {
-            messageId: String(plain._id),
-            recipientAcks: plain.recipientAcks || [],
+            messageId: String(messageId),
+            recipientAcks: acksDoc?.recipientAcks || [],
           },
         ],
       });
@@ -275,6 +289,7 @@ io.on("connection", (socket) => {
 
       const refreshed = await Message.find({ _id: { $in: ids } })
         .select("recipientAcks")
+        .populate("recipientAcks.user", "name")
         .lean();
 
       const updates = refreshed.map((m) => ({

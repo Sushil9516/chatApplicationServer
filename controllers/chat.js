@@ -18,6 +18,7 @@ import {
 } from "../constants/events.js";
 import {
   buildRecipientAcks,
+  canPostMessagesInChat,
   getOtherMember,
   isChatMember,
 } from "../lib/helper.js";
@@ -56,13 +57,16 @@ const getMyChats = TryCatch(async (req, res, next) => {
 
   const userId = new mongoose.Types.ObjectId(req.user);
   const chatIds = chats.map((c) => c._id);
+  const chatIdStrings = [...new Set(chatIds.map((id) => String(id)))];
   const lastByChatId = new Map();
 
   if (chatIds.length) {
     const grouped = await Message.aggregate([
       {
         $match: {
-          chat: { $in: chatIds },
+          $expr: {
+            $in: [{ $toString: "$chat" }, chatIdStrings],
+          },
           hiddenForUsers: { $nin: [userId] },
         },
       },
@@ -84,7 +88,8 @@ const getMyChats = TryCatch(async (req, res, next) => {
     for (const g of grouped) {
       const d = g.doc;
       if (!d) continue;
-      lastByChatId.set(String(g._id), {
+      const chatKey = String(g._id);
+      lastByChatId.set(chatKey, {
         content: d.content || "",
         createdAt: d.createdAt,
         senderId: d.sender ? String(d.sender) : "",
@@ -274,7 +279,12 @@ const removeMember = TryCatch(async (req, res, next) => {
     return next(new ErrorHandler("This is not a group chat", 400));
 
   if (chat.creator.toString() !== req.user.toString())
-    return next(new ErrorHandler("You are not allowed to add members", 403));
+    return next(new ErrorHandler("You are not allowed to remove members", 403));
+
+  if (userId.toString() === chat.creator.toString())
+    return next(
+      new ErrorHandler("Cannot remove the group owner from the group", 400)
+    );
 
   if (chat.members.length <= 3)
     return next(new ErrorHandler("Group must have at least 3 members", 400));
@@ -359,6 +369,17 @@ const sendAttachments = TryCatch(async (req, res, next) => {
 
   if (!chat) return next(new ErrorHandler("Chat not found", 404));
 
+  if (!isChatMember(chat, req.user))
+    return next(new ErrorHandler("You are not allowed to access this chat", 403));
+
+  if (!canPostMessagesInChat(chat, req.user))
+    return next(
+      new ErrorHandler(
+        "Only the group owner can send messages while owner-only send is enabled",
+        403
+      )
+    );
+
   if (files.length < 1)
     return next(new ErrorHandler("Please provide attachments", 400));
 
@@ -377,6 +398,7 @@ const sendAttachments = TryCatch(async (req, res, next) => {
 
   const saved = await Message.findById(created._id)
     .populate("sender", "name")
+    .populate("recipientAcks.user", "name")
     .lean();
 
   const messageForRealTime = {
@@ -405,19 +427,62 @@ const sendAttachments = TryCatch(async (req, res, next) => {
   });
 });
 
+const setGroupMessagingPermissions = TryCatch(async (req, res, next) => {
+  const chatId = req.params.id;
+  const onlyAdminsCanPost = Boolean(req.body?.onlyAdminsCanPost);
+
+  const chat = await Chat.findById(chatId);
+  if (!chat) return next(new ErrorHandler("Chat not found", 404));
+  if (!chat.groupChat)
+    return next(new ErrorHandler("This is not a group chat", 400));
+  if (!isChatMember(chat, req.user))
+    return next(new ErrorHandler("You are not allowed to access this chat", 403));
+  if (chat.creator.toString() !== req.user.toString())
+    return next(
+      new ErrorHandler("Only the group owner can change this setting", 403)
+    );
+
+  chat.onlyAdminsCanPost = onlyAdminsCanPost;
+  await chat.save();
+
+  emitEvent(req, REFETCH_CHATS, chat.members);
+
+  return res.status(200).json({
+    success: true,
+    onlyAdminsCanPost: chat.onlyAdminsCanPost,
+  });
+});
+
 const getChatDetails = TryCatch(async (req, res, next) => {
   if (req.query.populate === "true") {
     const chat = await Chat.findById(req.params.id)
       .populate("members", "name avatar")
+      .populate("creator", "name avatar")
       .lean();
 
     if (!chat) return next(new ErrorHandler("Chat not found", 404));
+
+    if (!isChatMember(chat, req.user))
+      return next(new ErrorHandler("You are not allowed to access this chat", 403));
 
     chat.members = chat.members.map(({ _id, name, avatar }) => ({
       _id,
       name,
       avatar: avatar.url,
     }));
+
+    let creatorOut = null;
+    if (chat.creator && typeof chat.creator === "object" && chat.creator._id) {
+      creatorOut = {
+        _id: chat.creator._id,
+        name: chat.creator.name,
+        avatar: chat.creator.avatar?.url || "",
+      };
+    } else if (chat.creator) {
+      creatorOut = { _id: chat.creator };
+    }
+    chat.creator = creatorOut;
+    chat.onlyAdminsCanPost = Boolean(chat.onlyAdminsCanPost);
 
     return res.status(200).json({
       success: true,
@@ -426,6 +491,8 @@ const getChatDetails = TryCatch(async (req, res, next) => {
   } else {
     const chat = await Chat.findById(req.params.id);
     if (!chat) return next(new ErrorHandler("Chat not found", 404));
+    if (!isChatMember(chat, req.user))
+      return next(new ErrorHandler("You are not allowed to access this chat", 403));
 
     return res.status(200).json({
       success: true,
@@ -712,6 +779,14 @@ const forwardMessage = TryCatch(async (req, res, next) => {
   if (String(src.chat) === String(targetChatId))
     return next(new ErrorHandler("Choose a different chat to forward to", 400));
 
+  if (!canPostMessagesInChat(targetChat, req.user))
+    return next(
+      new ErrorHandler(
+        "Only the group owner can send messages while owner-only send is enabled",
+        403
+      )
+    );
+
   const name = src.sender?.name || "Someone";
   const text = (src.content || "").trim();
   const fwdBody = text
@@ -729,6 +804,7 @@ const forwardMessage = TryCatch(async (req, res, next) => {
 
   const populated = await Message.findById(created._id)
     .populate("sender", "name")
+    .populate("recipientAcks.user", "name")
     .lean();
 
   const messageForRealTime = {
@@ -794,4 +870,5 @@ export {
   editMessage,
   deleteMessage,
   getCallHistory,
+  setGroupMessagingPermissions,
 };

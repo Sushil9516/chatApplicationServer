@@ -17,6 +17,7 @@ import {
   removeMember,
   renameGroup,
   sendAttachments,
+  setGroupMessagingPermissions,
 } from "../controllers/chat.js";
 import {
   addMemberValidator,
@@ -25,6 +26,7 @@ import {
   newGroupValidator,
   removeMemberValidator,
   renameValidator,
+  groupMessagingPermissionsValidator,
   sendAttachmentsValidator,
   messageIdParamValidator,
   editMessageValidator,
@@ -97,6 +99,14 @@ app.post(
 app.post("/:id/clear", chatIdValidator(), validateHandler, clearChatMessages);
 
 app.get("/:id/calls", chatIdValidator(), validateHandler, getCallHistory);
+
+app.patch(
+  "/:id/messaging-permissions",
+  chatIdValidator(),
+  groupMessagingPermissionsValidator(),
+  validateHandler,
+  setGroupMessagingPermissions
+);
 
 // Get Chat Details, rename,delete
 app
